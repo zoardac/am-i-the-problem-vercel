@@ -1,0 +1,148 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { listRecentCases } from '../lib/store';
+
+const recent = await listRecentCases(6);
+---
+
+<Layout>
+  <main class="min-h-screen">
+    <!-- Hero -->
+    <section class="paper-texture border-b-4 border-double" style="border-color: var(--ink);">
+      <div class="max-w-3xl mx-auto px-6 pt-16 pb-14">
+        <p class="mono text-sm" style="color: var(--pencil);">
+          Docket No. {new Date().getFullYear()}—{String(Math.floor(Math.random() * 9000) + 1000)}
+        </p>
+        <h1 class="mt-4 text-5xl sm:text-6xl leading-[1.05]" style="font-weight: 700;">
+          You tell your side.<br />We reconstruct theirs.
+        </h1>
+        <p class="mt-6 text-xl leading-relaxed max-w-xl" style="color: var(--ink-soft);">
+          Paste in the fight. We'll write the most reasonable version of what the other
+          person would say — then the internet votes on who's actually the problem.
+        </p>
+        <div class="mt-8 flex gap-4">
+          <a
+            href="#file"
+            class="mono px-6 py-3 text-sm font-bold text-white"
+            style="background: var(--stamp);"
+          >
+            File a case
+          </a>
+          <a
+            href="#recent"
+            class="mono px-6 py-3 text-sm font-bold border-2"
+            style="border-color: var(--ink); color: var(--ink);"
+          >
+            Browse the docket
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filing form -->
+    <section id="file" class="max-w-3xl mx-auto px-6 py-16">
+      <div class="relative mt-6 border-2 p-8 sm:p-10" style="border-color: var(--ink); background: var(--paper);">
+        <span class="mono absolute -top-3 left-8 px-2 text-xs" style="background: var(--paper); color: var(--pencil);">
+          EXHIBIT A — YOUR ACCOUNT
+        </span>
+        <form id="case-form" class="space-y-5">
+          <label for="yourSide" class="block mono text-xs" style="color: var(--pencil);">
+            What happened? (be specific — details make the reconstruction better)
+          </label>
+          <textarea
+            id="yourSide"
+            name="yourSide"
+            required
+            minlength="20"
+            maxlength="4000"
+            rows="8"
+            placeholder="My roommate has been leaving dishes in the sink for two weeks. I finally said something last night and now she's not speaking to me..."
+            class="w-full border-2 p-4 leading-relaxed bg-transparent focus:outline-none resize-y"
+            style="border-color: var(--line); color: var(--ink);"
+          ></textarea>
+          <div class="flex items-center justify-between">
+            <p class="mono text-xs" style="color: var(--pencil);">Posted anonymously. No login required.</p>
+            <button
+              type="submit"
+              id="submit-btn"
+              class="mono px-6 py-3 text-sm font-bold text-white disabled:opacity-50"
+              style="background: var(--ink);"
+            >
+              Submit for review
+            </button>
+          </div>
+          <p id="form-error" class="mono text-sm hidden" style="color: var(--stamp);"></p>
+        </form>
+
+        <div id="pending" class="hidden mt-6 mono text-sm" style="color: var(--pencil);">
+          The court is reviewing your account<span id="dots">...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent docket -->
+    <section id="recent" class="max-w-3xl mx-auto px-6 pb-24">
+      <h2 class="mono text-sm mb-6" style="color: var(--pencil);">RECENTLY FILED</h2>
+      <div class="space-y-3">
+        {
+          recent.length === 0 && (
+            <p class="text-lg" style="color: var(--ink-soft);">
+              No cases on the docket yet. Be the first to file.
+            </p>
+          )
+        }
+        {
+          recent.map((c) => (
+            <a
+              href={`/case/${c.id}`}
+              class="block border-2 p-5 hover:translate-x-1 transition-transform"
+              style="border-color: var(--ink); background: var(--paper);"
+            >
+              <div class="flex items-center justify-between">
+                <span class="mono text-xs" style="color: var(--pencil);">{c.category}</span>
+                <span class="mono text-xs font-bold" style="color: var(--stamp);">{c.verdict}</span>
+              </div>
+              <p class="mt-2 line-clamp-2" style="color: var(--ink-soft);">{c.yourSide}</p>
+            </a>
+          ))
+        }
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('case-form') as HTMLFormElement;
+    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
+    const errorEl = document.getElementById('form-error') as HTMLParagraphElement;
+    const pending = document.getElementById('pending') as HTMLDivElement;
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.classList.add('hidden');
+      const yourSide = (document.getElementById('yourSide') as HTMLTextAreaElement).value;
+
+      submitBtn.disabled = true;
+      pending.classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/cases', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ yourSide }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error ?? 'Something went wrong.');
+        }
+
+        window.location.href = `/case/${data.id}`;
+      } catch (err: any) {
+        pending.classList.add('hidden');
+        submitBtn.disabled = false;
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('hidden');
+      }
+    });
+  </script>
+</Layout>

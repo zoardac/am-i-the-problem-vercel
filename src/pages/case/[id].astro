@@ -1,0 +1,235 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getCase } from '../../lib/store';
+
+export const prerender = false;
+
+const { id } = Astro.params;
+const record = id ? await getCase(id) : undefined;
+
+if (!record) {
+  return Astro.redirect('/');
+}
+---
+
+<Layout title={`Docket #${record.id} — ${record.category} | The Docket`}>
+  <main class="min-h-screen paper-texture">
+    <div class="max-w-4xl mx-auto px-6 py-14">
+      <a href="/" class="mono text-sm" style="color: var(--pencil);">&larr; Back to docket</a>
+
+      <div class="mt-6 flex items-center justify-between flex-wrap gap-3">
+        <p class="mono text-sm" style="color: var(--pencil);">
+          Case No. {record.id} &middot; Filed {new Date(record.createdAt).toLocaleDateString()}
+        </p>
+        <span class="mono text-xs px-3 py-1 border-2" style="border-color: var(--ink);">
+          {record.category}
+        </span>
+      </div>
+
+      <!-- Verdict stamp -->
+      <div class="mt-8 flex justify-center">
+        <div
+          class="stamp-animate stamp-rotate mono border-4 px-6 py-3 text-xl sm:text-2xl font-bold text-center"
+          style="border-color: var(--stamp); color: var(--stamp);"
+        >
+          {record.verdict}
+        </div>
+      </div>
+
+      <!-- Exhibits -->
+      <div class="mt-12 grid sm:grid-cols-2 gap-6">
+        <div class="border-2 p-6" style="border-color: var(--ink); background: var(--paper);">
+          <p class="mono text-xs mb-3" style="color: var(--pencil);">EXHIBIT A — THEIR ACCOUNT (as submitted)</p>
+          <p class="leading-relaxed">{record.yourSide}</p>
+        </div>
+        <div class="border-2 p-6" style="border-color: var(--ink); background: var(--paper);">
+          <p class="mono text-xs mb-3" style="color: var(--pencil);">EXHIBIT B — THE OTHER SIDE (reconstructed)</p>
+          <p class="leading-relaxed">{record.theirSide}</p>
+          <p class="mono text-xs mt-4" style="color: var(--pencil);">
+            *Reconstructed by AI from Exhibit A. Not written by the other party.
+          </p>
+        </div>
+      </div>
+
+      <!-- Voting -->
+      <div class="mt-10 border-2 p-6" style="border-color: var(--ink); background: var(--paper);">
+        <p class="mono text-sm mb-4" style="color: var(--pencil);">WHO'S THE PROBLEM?</p>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <button
+            id="vote-you"
+            data-side="you"
+            class="mono border-2 py-4 font-bold hover:translate-y-[-2px] transition-transform"
+            style="border-color: var(--ink);"
+          >
+            Person A (submitter)
+            <span id="votes-you" class="block text-2xl mt-1">{record.votesYou}</span>
+          </button>
+          <button
+            id="vote-them"
+            data-side="them"
+            class="mono border-2 py-4 font-bold hover:translate-y-[-2px] transition-transform"
+            style="border-color: var(--ink);"
+          >
+            Person B (other party)
+            <span id="votes-them" class="block text-2xl mt-1">{record.votesThem}</span>
+          </button>
+        </div>
+        <p id="vote-note" class="mono text-xs mt-4 hidden" style="color: var(--pencil);">
+          Vote recorded. Thanks for serving jury duty.
+        </p>
+      </div>
+
+      <!-- Share -->
+      <div class="mt-10 text-center">
+        <button
+          id="share-btn"
+          class="mono px-6 py-3 text-sm font-bold text-white"
+          style="background: var(--stamp);"
+        >
+          Download verdict card
+        </button>
+        <canvas id="card-canvas" width="1080" height="1080" class="hidden"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <script define:vars={{ caseId: record.id, category: record.category, verdict: record.verdict, votesYou: record.votesYou, votesThem: record.votesThem }}>
+    const voteYouBtn = document.getElementById('vote-you');
+    const voteThemBtn = document.getElementById('vote-them');
+    const votesYouEl = document.getElementById('votes-you');
+    const votesThemEl = document.getElementById('votes-them');
+    const voteNote = document.getElementById('vote-note');
+
+    let hasVoted = localStorage.getItem(`voted-${caseId}`) === 'true';
+    if (hasVoted) {
+      voteYouBtn.disabled = true;
+      voteThemBtn.disabled = true;
+      voteYouBtn.style.opacity = '0.5';
+      voteThemBtn.style.opacity = '0.5';
+      voteNote.classList.remove('hidden');
+    }
+
+    async function castVote(side) {
+      if (hasVoted) return;
+      hasVoted = true;
+      localStorage.setItem(`voted-${caseId}`, 'true');
+      voteYouBtn.disabled = true;
+      voteThemBtn.disabled = true;
+      voteYouBtn.style.opacity = '0.5';
+      voteThemBtn.style.opacity = '0.5';
+
+      const res = await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: caseId, side }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        votesYouEl.textContent = data.votesYou;
+        votesThemEl.textContent = data.votesThem;
+        voteNote.classList.remove('hidden');
+      }
+    }
+
+    voteYouBtn?.addEventListener('click', () => castVote('you'));
+    voteThemBtn?.addEventListener('click', () => castVote('them'));
+
+    // Shareable verdict card via canvas
+    const shareBtn = document.getElementById('share-btn');
+    shareBtn?.addEventListener('click', () => {
+      const canvas = document.getElementById('card-canvas');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Background
+      ctx.fillStyle = '#F1ECDD';
+      ctx.fillRect(0, 0, W, H);
+
+      // Border
+      ctx.strokeStyle = '#20293A';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(40, 40, W - 80, H - 80);
+
+      // Category label
+      ctx.fillStyle = '#8A8368';
+      ctx.font = '32px monospace';
+      ctx.fillText(category.toUpperCase(), 90, 140);
+
+      // Title
+      ctx.fillStyle = '#20293A';
+      ctx.font = 'bold 56px serif';
+      wrapText(ctx, 'THE DOCKET', 90, 230, W - 180, 64);
+
+      // Verdict stamp
+      ctx.save();
+      ctx.translate(W / 2, 560);
+      ctx.rotate(-0.12);
+      ctx.strokeStyle = '#A6332B';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(-380, -80, 760, 160);
+      ctx.fillStyle = '#A6332B';
+      ctx.font = 'bold 52px monospace';
+      ctx.textAlign = 'center';
+      wrapTextCentered(ctx, verdict.toUpperCase(), 0, 12, 700, 56);
+      ctx.restore();
+
+      // Vote tally
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#20293A';
+      ctx.font = '36px monospace';
+      ctx.fillText(`Person A: ${votesYouEl.textContent} votes`, 90, 860);
+      ctx.fillText(`Person B: ${votesThemEl.textContent} votes`, 90, 910);
+
+      // Footer
+      ctx.fillStyle = '#8A8368';
+      ctx.font = '28px monospace';
+      ctx.fillText(`Case No. ${caseId} — thedocket.example`, 90, 1010);
+
+      const link = document.createElement('a');
+      link.download = `verdict-${caseId}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+      const words = text.split(' ');
+      let line = '';
+      let curY = y;
+      for (const word of words) {
+        const testLine = line + word + ' ';
+        if (ctx.measureText(testLine).width > maxWidth && line !== '') {
+          ctx.fillText(line, x, curY);
+          line = word + ' ';
+          curY += lineHeight;
+        } else {
+          line = testLine;
+        }
+      }
+      ctx.fillText(line, x, curY);
+    }
+
+    function wrapTextCentered(ctx, text, x, y, maxWidth, lineHeight) {
+      const words = text.split(' ');
+      let line = '';
+      let curY = y;
+      const lines = [];
+      for (const word of words) {
+        const testLine = line + word + ' ';
+        if (ctx.measureText(testLine).width > maxWidth && line !== '') {
+          lines.push(line);
+          line = word + ' ';
+        } else {
+          line = testLine;
+        }
+      }
+      lines.push(line);
+      const totalHeight = lines.length * lineHeight;
+      let startY = curY - totalHeight / 2 + lineHeight;
+      for (const l of lines) {
+        ctx.fillText(l.trim(), x, startY);
+        startY += lineHeight;
+      }
+    }
+  </script>
+</Layout>
