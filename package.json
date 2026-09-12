@@ -14,6 +14,7 @@
   "dependencies": {
     "@astrojs/vercel": "^11.0.10",
     "@tailwindcss/vite": "^4.3.3",
+    "@upstash/redis": "^1.38.4",
     "astro": "^7.3.2",
     "tailwindcss": "^4.3.3"
   },
